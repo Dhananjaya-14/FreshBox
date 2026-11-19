@@ -77,6 +77,8 @@ npm run seed -w server
 - Administrators can upload JPEG, PNG, or WebP product photos (up to 5 MB),
   edit catalogue details, and archive or restore products. Uploaded photos are
   stored in `server/uploads`; use persistent storage and backups for deployments.
+- Administrators can edit package details and archive or restore packages from
+  the Packages section. Archived packages remain available in order history.
 - Checkout currently supports Cash on Delivery. An online payment gateway,
   signed payment webhooks, transactional email/SMS, and cloud image storage
   require a business-selected provider and credentials; no provider secrets or

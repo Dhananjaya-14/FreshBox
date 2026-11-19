@@ -579,17 +579,54 @@ function OrderTable({ orders, onUpdate }) {
 function AdminPackages() {
   const [packs, setPacks] = useState([]);
   const [products, setProducts] = useState([]);
+  const [editingPack, setEditingPack] = useState(null);
+  const [includedItems, setIncludedItems] = useState([]);
   const [error, setError] = useState("");
   const load = () => api("/admin/packages").then(setPacks).catch((err) => setError(err.message));
-  useEffect(() => { load(); api("/products").then(setProducts).catch(() => {}); }, []);
+  useEffect(() => { load(); api("/admin/products").then(setProducts).catch((err) => setError(err.message)); }, []);
   async function submit(event) {
     event.preventDefault();
     const formElement = event.currentTarget;
     const data = Object.fromEntries(new FormData(formElement));
-    try { await api("/admin/packages", { method: "POST", body: jsonBody({ name: data.name, description: data.description, price: Number(data.price), packageType: data.packageType }) }); await load(); formElement.reset(); }
+    setError("");
+    try {
+      await api(editingPack ? `/admin/packages/${editingPack._id}` : "/admin/packages", {
+        method: editingPack ? "PATCH" : "POST",
+        body: jsonBody({
+          name: data.name,
+          description: data.description,
+          price: Number(data.price),
+          packageType: data.packageType,
+          includedItems: includedItems.map(({ product, quantity }) => ({ product, quantity: Number(quantity) }))
+        })
+      });
+      setEditingPack(null);
+      setIncludedItems([]);
+      formElement.reset();
+      await load();
+    }
     catch (err) { setError(err.message); }
   }
-  return <div className="admin-panel"><span className="eyebrow">BOX BUILDER</span><h2>FreshBox packages</h2>{error && <p className="notice-error">{error}</p>}<form className="admin-product-form" onSubmit={submit}><label>Box name<input name="name" required /></label><label>Type<select name="packageType"><option value="mini">Mini</option><option value="family">Family</option><option value="premium">Premium</option><option value="custom">Custom</option></select></label><label>Price<input name="price" type="number" min="0" required /></label><label>Description<input name="description" /></label><button className="button button-dark">Create box <Plus size={16} /></button></form><div className="simple-table"><div className="simple-row simple-head"><span>Package</span><span>Type</span><span>Price</span><span>Items included</span><span>Status</span></div>{packs.map((pack) => <div className="simple-row" key={pack._id}><strong>{pack.name}</strong><span>{pack.packageType}</span><span>{money(pack.price)}</span><span>{pack.includedItems?.length || 0}</span><span className="status-pill">{pack.isActive ? "Active" : "Archived"}</span></div>)}</div><small>Available catalogue items: {products.length}. Package item configuration is managed through the API.</small></div>;
+  async function archivePack(pack) {
+    if (!window.confirm(`Delete "${pack.name}" from the active packages? It will be archived so existing orders remain intact.`)) return;
+    setError("");
+    try {
+      await api(`/admin/packages/${pack._id}`, { method: "DELETE" });
+      if (editingPack?._id === pack._id) {
+        setEditingPack(null);
+        setIncludedItems([]);
+      }
+      await load();
+    } catch (err) { setError(err.message); }
+  }
+  async function restorePack(pack) {
+    setError("");
+    try {
+      await api(`/admin/packages/${pack._id}`, { method: "PATCH", body: jsonBody({ isActive: true }) });
+      await load();
+    } catch (err) { setError(err.message); }
+  }
+  return <div className="admin-panel"><span className="eyebrow">BOX BUILDER</span><h2>FreshBox packages</h2>{error && <p className="notice-error" role="alert">{error}</p>}<form key={editingPack?._id || "new-package"} className="admin-product-form" onSubmit={submit}><label>Box name<input name="name" defaultValue={editingPack?.name || ""} required /></label><label>Type<select name="packageType" defaultValue={editingPack?.packageType || "mini"}><option value="mini">Mini</option><option value="family">Family</option><option value="premium">Premium</option><option value="custom">Custom</option></select></label><label>Price<input name="price" type="number" min="0" step="0.01" defaultValue={editingPack?.price ?? ""} required /></label><label>Description<input name="description" defaultValue={editingPack?.description || ""} /></label><div className="package-items-editor"><div className="package-items-heading"><strong>Items included</strong><button className="button button-light" type="button" onClick={() => setIncludedItems((items) => [...items, { product: "", quantity: 1 }])}><Plus size={15} /> Add item</button></div>{includedItems.map((item, index) => <div className="package-item-row" key={`${editingPack?._id || "new"}-${index}`}><label>Product<select required value={item.product} onChange={(event) => setIncludedItems((items) => items.map((current, itemIndex) => itemIndex === index ? { ...current, product: event.target.value } : current))}><option value="">Select product</option>{products.filter((product) => product._id === item.product || (product.isActive && !includedItems.some((selected, selectedIndex) => selectedIndex !== index && selected.product === product._id))).map((product) => <option key={product._id} value={product._id}>{product.name}{product.isActive ? "" : " (Archived)"}</option>)}</select></label><label>Quantity<input type="number" min="1" max="99" step="1" required value={item.quantity} onChange={(event) => setIncludedItems((items) => items.map((current, itemIndex) => itemIndex === index ? { ...current, quantity: event.target.value } : current))} /></label><button className="package-item-remove" type="button" aria-label={`Remove included item ${index + 1}`} onClick={() => setIncludedItems((items) => items.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div>)}{includedItems.length === 0 && <small>No products included yet. Add one or more items to this package.</small>}</div><button className="button button-dark">{editingPack ? "Save changes" : "Create box"} <Plus size={16} /></button>{editingPack && <button className="button button-light" type="button" onClick={() => { setEditingPack(null); setIncludedItems([]); }}>Cancel</button>}</form><div className="simple-table product-admin-table"><div className="simple-row simple-head"><span>Package</span><span>Type</span><span>Price</span><span>Items included</span><span>Status</span><span>Actions</span></div>{packs.map((pack) => <div className="simple-row" key={pack._id}><strong>{pack.name}</strong><span>{pack.packageType}</span><span>{money(pack.price)}</span><span>{pack.includedItems?.length || 0}</span><span className="status-pill">{pack.isActive ? "Active" : "Archived"}</span><div className="product-admin-actions"><button type="button" onClick={() => { setEditingPack(pack); setIncludedItems((pack.includedItems || []).map((item) => ({ product: item.product?._id || item.product, quantity: item.quantity }))); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Edit</button>{pack.isActive ? <button type="button" className="danger-action" onClick={() => archivePack(pack)}>Delete</button> : <button type="button" onClick={() => restorePack(pack)}>Restore</button>}</div></div>)}</div>{!packs.length && <div className="table-empty">No packages have been created yet.</div>}<small>Available catalogue items: {products.filter((product) => product.isActive).length}. Deleted packages are archived so existing order records remain intact.</small></div>;
 }
 
 function AdminSubscriptions() {

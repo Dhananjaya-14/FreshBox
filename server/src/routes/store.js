@@ -644,5 +644,11 @@ router.patch("/admin/packages/:id", ...administrator, async (req, res) => {
   if (!pack) return res.status(404).json({ message: "Package not found." });
   res.json(pack);
 });
+router.delete("/admin/packages/:id", ...administrator, async (req, res) => {
+  if (!isId(req.params.id)) return res.status(400).json({ message: "Invalid package id." });
+  const pack = await Package.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
+  if (!pack) return res.status(404).json({ message: "Package not found." });
+  res.json({ message: "Package archived." });
+});
 
 export default router;
